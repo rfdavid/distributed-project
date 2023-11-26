@@ -1,5 +1,16 @@
 # Distributed Systems Project
 
+## Using docker
+
+```
+$ docker build -t distributed-inference .
+$ docker run -p 3000:3000 distributed-inference 
+
+```
+
+
+## Without docker
+
 ```bash
 $ npm run dev
 ```
@@ -19,3 +30,4 @@ Try the following before running:
 ```bash
 $ export NODE_OPTIONS=--openssl-legacy-provider
 ```
+
