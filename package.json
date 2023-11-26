@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node server.tsx",
+    "dev": "node --max-old-space-size=4096 server.tsx",
     "build": "next build",
-    "start": "NODE_ENV=production node server.js"
+    "start": "NODE_ENV=production node --max-old-space-size=4096 server.js"
+
   },
   "dependencies": {
     "fs": "^0.0.1-security",

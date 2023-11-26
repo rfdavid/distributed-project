@@ -1,7 +1,7 @@
 # Distributed Systems Project
 
 ```bash
-$ npm run start
+$ npm run dev
 ```
 
 If you are experiencing the following error:

@@ -5,37 +5,78 @@ import Head from 'next/head';
 import styles from '../styles/Home.module.css';
 import ImageCanvas from "../components/ImageCanvas";
 
+import { inferenceSqueezenet } from '../utils/predict';
+
 const Home: NextPage = () => {
   const [socket, setSocket] = useState<SocketIOClient.Socket>();
   const [clients, setClients] = useState<string[]>([]);
-
+  const [clientId, setClientId] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [messageQueue, setMessageQueue] = useState<string[]>([]);
 
   useEffect(() => {
     const newSocket = io('http://localhost:3000');
+    let localUpdatedQueue = [];  // Local variable to track the queue
+
+
+    newSocket.on('connect', () => {
+      setClientId(newSocket.id);
+
+        newSocket.on('clients', (clientList: string[]) => {
+        setClients(clientList);
+        });
+
+        newSocket.on('updateQueue', (updatedQueue) => {
+            setMessageQueue(updatedQueue);
+
+            if (localUpdatedQueue.length === 0 || localUpdatedQueue.length !== updatedQueue.length) {
+                localUpdatedQueue = updatedQueue;
+            }
+            console.log('Loca updated queue length:', localUpdatedQueue.length);
+            console.log('Updated queue length:', updatedQueue.length);
+
+            const targetJobIndex = localUpdatedQueue.findIndex(
+                item => item.clientProcessorId === newSocket.id && item.status === "waiting"
+            );
+
+            let updatedTargetJob = null;
+
+            if (targetJobIndex !== -1) {
+                const targetJob = localUpdatedQueue[targetJobIndex];
+                
+                if (targetJob.status === "waiting") {  // Check to prevent duplicate processing
+                    console.log('Found target item:', targetJob);
+
+                    updatedTargetJob = { ...targetJob, status: "processing" };  // Update the specific item
+
+                    const newQueue = localUpdatedQueue.map((item, index) =>
+                            index === targetJobIndex ? updatedTargetJob : item
+                    );
+
+                    setMessageQueue(newQueue);
+                    localUpdatedQueue = newQueue;
+                    newSocket.emit('updateQueueItem', updatedTargetJob); // status: processing
+
+                    const processInference = async () => {
+                        let [inferenceResult, inferenceTime] = await inferenceSqueezenet(updatedTargetJob.url);
+
+                        updatedTargetJob.status = "completed";
+                        updatedTargetJob.inferenceSpeed = inferenceTime;
+                        updatedTargetJob.probability = inferenceResult[0].probability;
+                        updatedTargetJob.label = inferenceResult[0].name;
+                        console.log("inferenceResult:", inferenceResult);
+                        console.log("inferenceTime:", inferenceTime);
+
+                        newSocket.emit('updateQueueItem', updatedTargetJob); // status: completed
+                    };
+
+                    processInference();
+                }
+            }
+        });
+    });
+
     setSocket(newSocket);
-
-    newSocket.on('clients', (clientList: string[]) => {
-      setClients(clientList);
-    });
-
-    newSocket.on('updateQueue', (updatedQueue) => {
-      setMessageQueue(updatedQueue);
-      console.log('Updated queue:', updatedQueue);
-
-      // find the first available image url (clientProcessorId is null)
-      // this must be a loop 
-      const firstAvailable = updatedQueue.find(data => data.clientProcessorId === null);
-      if (firstAvailable) {
-          console.log('Found item with clientProcessorId null:', firstAvailable);
-          // try to get the 'lock'
-          // lock acquired? process
-          // no? find next
-          // socket.emit('messageProcessed', { messageId, clientProcessorId });
-      }
-
-    });
 
     return () => newSocket.close();
   }, []);
@@ -55,44 +96,74 @@ const Home: NextPage = () => {
 
       <main className={styles.main}>
         <h1 className={styles.title}>Distributed Inference Server</h1>
-
-        <ImageCanvas width={240} height={240}/>
-        <div id="result" className="mt-3">
-        </div>
-
         <div>
+        <h2>Client ID: {clientId}</h2>
           <h2>Connected Clients:</h2>
           <ul>
             {clients.map(client => <li key={client}>{client}</li>)}
           </ul>
         </div>
 
-     <textarea
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-      />
-      <button onClick={sendMessage}>Send</button>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: '20px' }}>
+            <textarea 
+                style={{
+                    width: '600px', 
+                    height: '100px', 
+                    padding: '10px',
+                    border: '1px solid #ccc', 
+                    borderRadius: '8px',
+                    fontSize: '1rem',
+                    marginBottom: '10px',
+                    resize: 'vertical'
+                }}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+            />
+            <button 
+                style={{
+                    width: '150px',
+                    padding: '10px',
+                    border: 'none',
+                    borderRadius: '5px',
+                    backgroundColor: '#0070f3',
+                    color: 'white',
+                    fontSize: '1rem',
+                    cursor: 'pointer',
+                    transition: 'background-color 0.3s ease'
+                }}
+                onClick={sendMessage}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#0056b3'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#0070f3'}
+            >
+                Predict
+            </button>
+        </div>
 
-      <div>
-        <h2>Message Queue:</h2>
-          {messageQueue.map((msg, index) => (
-          <div>
-            <p><img src={msg.url} width="250" /></p>
-            <p>ID: {msg.id}</p>
-            <p>Client Processing: {msg.clientProcessorId}</p>
-            <p>Classification: {msg.label}</p>
-            <p>Probability: {msg.probability}</p>
-            <p>Inference Speed: {msg.inferenceSpeed}</p>
+
+    <h2>Image Queue:</h2>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', alignItems: 'stretch' }}>
+    {messageQueue.map((msg, index) => (
+        <div key={index} style={{
+            border: '1px solid #ddd', 
+            borderRadius: '8px', 
+            overflow: 'hidden', 
+            display: 'flex', 
+            flexDirection: 'column'
+        }}>
+            <img src={msg.url} style={{ width: '100%', height: 'auto', objectFit: 'cover' }} alt="Image" />
+            <div style={{ padding: '10px' }}>
+                <p><strong>Node Owner:</strong> {msg.clientProcessorId}</p>
+                <p><strong>Classification:</strong> {msg.label}</p>
+                <p><strong>Status:</strong> {msg.status}</p>
+                <p><strong>Probability:</strong> {(msg.probability * 100).toFixed(2)}%</p>
+                <p><strong>Inference Speed:</strong> {msg.inferenceSpeed}s</p>
             </div>
-          ))}
-      </div>
+        </div>
+    ))}
+</div>
 
 
       </main>
-
-      <footer className={styles.footer}>
-        <a href="https://onnxruntime.ai/docs" target="_blank" rel="noopener noreferrer"></a>
-      </footer>
     </div>
   )
 }

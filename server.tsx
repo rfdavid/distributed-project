@@ -7,11 +7,13 @@ const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
-const messageQueue = [];
+let messageQueue = [];
 let messageId = 0; // Simple counter for message IDs
 
 // list of clients
 const clients = {};
+
+let currentClientIndex = -1;
 
 app.prepare().then(() => {
   const server = createServer((req, res) => {
@@ -30,42 +32,44 @@ app.prepare().then(() => {
     // send updated queue
     socket.emit('updateQueue', messageQueue);
     
-    // this event is to receive a msg from the client, when the client takes a
-    // specific image url for processing
-    socket.on('requestImageForProcessing', () => {
-        messageQueue.push(data);
-        io.emit('updateQueue', messageQueue); // Broadcast the updated queue
-        console.log('Broadcasted:', message);
+    socket.on('updateQueueItem', (item) => {
+        const index = messageQueue.findIndex((queueItem) => queueItem.id === item.id);
+        messageQueue[index] = item;
+        io.emit('updateQueue', messageQueue); // Broadcast the updated queueItem
     });
 
 
-//    socket.on('messageProcessed', (processedData) => {
-//        const { messageId, clientProcessorId } = processedData;
-//
-//        const messageIndex = messageQueue.findIndex(msg => msg.id === messageId);
-//        if (messageIndex !== -1) {
-//            messageQueue[messageIndex].clientProcessorId = clientProcessorId;
-//            io.emit('updateQueue', messageQueue); // Broadcast the updated queue
-//            console.log(`Message ID ${messageId} processed by Client ID ${clientProcessorId}`);
-//        }
-//    });
-
-
-    // message = url of the image
     socket.on('newMessage', (message) => {
-        const data = {
-            id: messageId++,
-            inferenceSpeed: null,
-            probability: null,
-            label: null, 
-            clientProcessorId: null, // the client id that processed the image
-            url: message
-        };
+        // Split the message by new lines to get each URL
+        const urls = message.split('\n');
 
-        messageQueue.push(data);
-        io.emit('updateQueue', messageQueue); // Broadcast the updated queue
-        console.log('Broadcasted:', message);
+        // Process each URL
+        urls.forEach(url => {
+            // Update the client index for each URL in a round-robin fashion
+            currentClientIndex = (currentClientIndex + 1) % Object.keys(clients).length;
+            const clientKeys = Object.keys(clients);
+            const clientKey = clientKeys[currentClientIndex];
+
+            // Create a new data object for each URL
+            const data = {
+                id: messageId++,
+                inferenceSpeed: null,
+                probability: null,
+                label: null,
+                status: 'waiting',
+                clientProcessorId: clientKey,
+                url: url.trim()
+            };
+
+            // Push each new data object to the messageQueue
+            messageQueue.push(data);
+        });
+
+        // Broadcast the updated queue after processing all URLs
+        io.emit('updateQueue', messageQueue);
+        console.log('Broadcasted:', urls);
     });
+
 
     socket.on('disconnect', () => {
       delete clients[socket.id];
