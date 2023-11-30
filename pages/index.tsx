@@ -29,9 +29,24 @@ const Home: NextPage = () => {
         newSocket.on('updateQueue', (updatedQueue) => {
             setMessageQueue(updatedQueue);
 
+            // clear local queue
             if (localUpdatedQueue.length === 0 || localUpdatedQueue.length !== updatedQueue.length) {
                 localUpdatedQueue = updatedQueue;
             }
+            localUpdatedQueue.forEach((item, index) => {
+                if (item.hasOwnProperty('clientProcessorId')) {
+                    if (item.clientProcessorId === null) {
+                        localUpdatedQueue = updatedQueue;
+                        console.log('reset local queue');
+                    }
+                } else {
+                    console.log('reset local queue');
+                    localUpdatedQueue = updatedQueue;
+                }
+            });
+
+
+//                    localUpdatedQueue = updatedQueue;
             console.log('Loca updated queue length:', localUpdatedQueue.length);
             console.log('Updated queue length:', updatedQueue.length);
 
@@ -40,6 +55,8 @@ const Home: NextPage = () => {
             );
 
             let updatedTargetJob = null;
+
+            console.log('Target job index:', localUpdatedQueue);
 
             if (targetJobIndex !== -1) {
                 const targetJob = localUpdatedQueue[targetJobIndex];
@@ -81,9 +98,20 @@ const Home: NextPage = () => {
     return () => newSocket.close();
   }, []);
 
-  const sendMessage = () => {
-    socket.emit('newMessage', message);
+const sendMessage = () => {
+  const trimmedMessage = message.trim();
+
+  if (trimmedMessage) {
+    socket.emit('newMessage', trimmedMessage);
     setMessage(''); // Clear the textarea
+  } else {
+    console.log('Cannot send an empty message');
+  }
+};
+
+
+  const clearQueue = () => {
+    socket.emit('clearQueue');
   };
 
   return (
@@ -119,48 +147,83 @@ const Home: NextPage = () => {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
             />
-            <button 
-                style={{
-                    width: '150px',
-                    padding: '10px',
-                    border: 'none',
-                    borderRadius: '5px',
-                    backgroundColor: '#0070f3',
-                    color: 'white',
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    transition: 'background-color 0.3s ease'
-                }}
-                onClick={sendMessage}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#0056b3'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#0070f3'}
-            >
-                Predict
-            </button>
+
+
+<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+    <button
+        style={{
+            width: '150px',
+            padding: '10px',
+            border: 'none',
+            borderRadius: '5px',
+            backgroundColor: '#808080', /* Changed to gray */
+            color: 'white',
+            fontSize: '1rem',
+            cursor: 'pointer',
+            transition: 'background-color 0.3s ease',
+            marginRight: '10px' /* Added some space between the buttons */
+        }}
+        onClick={clearQueue}
+        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#696969'} /* Darker gray on hover */
+        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#808080'}
+    >
+       Clear Queue
+    </button>
+
+    <button
+        style={{
+            width: '150px',
+            padding: '10px',
+            border: 'none',
+            borderRadius: '5px',
+            backgroundColor: '#0070f3',
+            color: 'white',
+            fontSize: '1rem',
+            cursor: 'pointer',
+            transition: 'background-color 0.3s ease'
+        }}
+        onClick={sendMessage}
+        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#0056b3'}
+        onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#0070f3'}
+    >
+        Predict
+    </button>
+</div>
+
         </div>
 
-
     <h2>Image Queue:</h2>
+
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', alignItems: 'stretch' }}>
     {messageQueue.map((msg, index) => (
-        <div key={index} style={{
+        <div 
+        key={index} 
+        style={{
             border: '1px solid #ddd', 
             borderRadius: '8px', 
             overflow: 'hidden', 
             display: 'flex', 
-            flexDirection: 'column'
-        }}>
+            flexDirection: 'column',
+        }}
+        >
             <img src={msg.url} style={{ width: '100%', height: 'auto', objectFit: 'cover' }} alt="Image" />
             <div style={{ padding: '10px' }}>
-                <p><strong>Node Owner:</strong> {msg.clientProcessorId}</p>
+                <p><strong>Node:</strong> {msg.clientProcessorId}</p>
                 <p><strong>Classification:</strong> {msg.label}</p>
-                <p><strong>Status:</strong> {msg.status}</p>
+                <p>
+                    <strong>Status: </strong> 
+                    {msg.status}
+                    {msg.status === "processing" && <span style={{ color: 'orange', marginLeft: '5px' }}>⏳</span>}
+                    {msg.status === "completed" && <span style={{ color: 'green', marginLeft: '5px' }}>✅</span>}
+                </p>
                 <p><strong>Probability:</strong> {(msg.probability * 100).toFixed(2)}%</p>
                 <p><strong>Inference Speed:</strong> {msg.inferenceSpeed}s</p>
             </div>
+
+
         </div>
     ))}
-</div>
+    </div>
 
 
       </main>

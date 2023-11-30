@@ -3,6 +3,9 @@ const { parse } = require('url');
 const next = require('next');
 const { Server } = require('socket.io');
 
+const fs = require('fs');
+
+
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
 const handle = app.getRequestHandler();
@@ -15,6 +18,14 @@ const clients = {};
 
 let currentClientIndex = -1;
 
+try {
+    const data = fs.readFileSync('messageQueue.json', 'utf8');
+    messageQueue = JSON.parse(data);
+    console.log('Data loaded from file:', messageQueue);
+} catch (err) {
+    console.error('Initializing new message queue', err);
+}
+
 app.prepare().then(() => {
   const server = createServer((req, res) => {
     const parsedUrl = parse(req.url, true);
@@ -22,6 +33,41 @@ app.prepare().then(() => {
   });
 
   const io = new Server(server);
+
+  function serializeAndSave() {
+    const dataToWrite = JSON.stringify(messageQueue, null, 2); // null and 2 for pretty formatting
+    fs.writeFileSync('messageQueue.json', dataToWrite, 'utf8');
+  }
+
+  function updateQueue() {
+    serializeAndSave();
+    io.emit('updateQueue', messageQueue);
+  }
+
+
+    // Function to reassign clientProcessorId for items in the queue
+    function reassignDisconnectedClients() {
+        const connectedClientIds = Object.keys(clients);
+
+        console.log('Reassigning disconnected clients...');
+
+        currentClientIndex = 0;
+        messageQueue.forEach(item => {
+            if (!connectedClientIds.includes(item.clientProcessorId) && item.status !== "completed") {
+                // Round-robin assignment to a connected client
+                currentClientIndex = (currentClientIndex + 1) % connectedClientIds.length;
+                const newClientKey = connectedClientIds[currentClientIndex];
+                item.clientProcessorId = newClientKey;
+                item.status = 'waiting'; // Optionally reset the status
+//                console.log('Reassigned item:', item);
+                console.log("Connected clients:", connectedClientIds);
+            }
+        });
+
+        // Broadcast the updated queue
+        updateQueue();
+    }
+
 
   io.on('connection', (socket) => {
     clients[socket.id] = socket;
@@ -36,6 +82,12 @@ app.prepare().then(() => {
         const index = messageQueue.findIndex((queueItem) => queueItem.id === item.id);
         messageQueue[index] = item;
         io.emit('updateQueue', messageQueue); // Broadcast the updated queueItem
+    });
+
+    socket.on('clearQueue', (item) => {
+        messageQueue.length = 0;
+        console.log(messageQueue);
+        updateQueue();
     });
 
 
@@ -66,17 +118,24 @@ app.prepare().then(() => {
         });
 
         // Broadcast the updated queue after processing all URLs
-        io.emit('updateQueue', messageQueue);
+        updateQueue();
         console.log('Broadcasted:', urls);
     });
 
-
+    // Disconnect event
     socket.on('disconnect', () => {
-      delete clients[socket.id];
-      io.emit('clients', Object.keys(clients)); // Update the list of clients
-      console.log('Client disconnected:', socket.id);
+        console.log('Client disconnected:', socket.id);
+
+        // Remove the disconnected client from the clients list
+        delete clients[socket.id];
+        io.emit('clients', Object.keys(clients)); // Update the list of clients
+
+        // Reassign any items that were being processed by the disconnected client
+        reassignDisconnectedClients();
     });
 
+
+    reassignDisconnectedClients();
   });
 
   server.listen(3000, (err) => {

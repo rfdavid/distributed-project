@@ -5,8 +5,7 @@
   "scripts": {
     "dev": "node --max-old-space-size=4096 server.tsx",
     "build": "next build",
-    "start": "NODE_ENV=production node --max-old-space-size=4096 server.js"
-
+    "start": "NODE_ENV=production node --max-old-space-size=4096 server.tsx"
   },
   "dependencies": {
     "fs": "^0.0.1-security",
@@ -24,6 +23,7 @@
   "devDependencies": {
     "@types/lodash": "^4.14.176",
     "@types/react": "17.0.19",
+    "@types/socket.io-client": "^3.0.0",
     "copy-webpack-plugin": "^9.0.1",
     "eslint": "7.32.0",
     "eslint-config-next": "11.1.0",
