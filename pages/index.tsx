@@ -23,9 +23,11 @@ const Home: NextPage = () => {
       setClientId(newSocket.id);
 
         newSocket.on('clients', (clientList: string[]) => {
-        setClients(clientList);
+            setClients(clientList);
         });
 
+        // client will receive updateQueue message to update
+        // the current queue list accordingly
         newSocket.on('updateQueue', (updatedQueue) => {
             setMessageQueue(updatedQueue);
 
@@ -45,8 +47,6 @@ const Home: NextPage = () => {
                 }
             });
 
-
-//                    localUpdatedQueue = updatedQueue;
             console.log('Loca updated queue length:', localUpdatedQueue.length);
             console.log('Updated queue length:', updatedQueue.length);
 
@@ -156,15 +156,15 @@ const sendMessage = () => {
             padding: '10px',
             border: 'none',
             borderRadius: '5px',
-            backgroundColor: '#808080', /* Changed to gray */
+            backgroundColor: '#808080',
             color: 'white',
             fontSize: '1rem',
             cursor: 'pointer',
             transition: 'background-color 0.3s ease',
-            marginRight: '10px' /* Added some space between the buttons */
+            marginRight: '10px'
         }}
         onClick={clearQueue}
-        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#696969'} /* Darker gray on hover */
+        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#696969'}
         onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#808080'}
     >
        Clear Queue
@@ -232,4 +232,3 @@ const sendMessage = () => {
 }
 
 export default Home;
-

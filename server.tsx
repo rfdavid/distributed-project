@@ -5,7 +5,6 @@ const { Server } = require('socket.io');
 
 const fs = require('fs');
 
-
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
 const handle = app.getRequestHandler();
@@ -34,6 +33,8 @@ app.prepare().then(() => {
 
   const io = new Server(server);
 
+  // this function is used to serialize the messageQueue and save it to a file
+  // the file can be stored in a NFS volume to be shared between multiple instances of the server
   function serializeAndSave() {
     const dataToWrite = JSON.stringify(messageQueue, null, 2); // null and 2 for pretty formatting
     fs.writeFileSync('messageQueue.json', dataToWrite, 'utf8');
@@ -43,7 +44,6 @@ app.prepare().then(() => {
     serializeAndSave();
     io.emit('updateQueue', messageQueue);
   }
-
 
     // Function to reassign clientProcessorId for items in the queue
     function reassignDisconnectedClients() {
@@ -58,8 +58,7 @@ app.prepare().then(() => {
                 currentClientIndex = (currentClientIndex + 1) % connectedClientIds.length;
                 const newClientKey = connectedClientIds[currentClientIndex];
                 item.clientProcessorId = newClientKey;
-                item.status = 'waiting'; // Optionally reset the status
-//                console.log('Reassigned item:', item);
+                item.status = 'waiting';
                 console.log("Connected clients:", connectedClientIds);
             }
         });
